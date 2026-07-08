@@ -16,7 +16,6 @@ langgraph.json 이 아래 `agent` 그래프를 참조한다.
 
 import json
 import os
-import shutil
 from pathlib import Path
 
 import dotenv
@@ -73,16 +72,37 @@ WORKSPACE = Path(os.getenv("WORKSPACE_DIR", "workspace")).expanduser().resolve()
 WORKSPACE.mkdir(parents=True, exist_ok=True)
 
 # 스킬 디렉터리(workspace/skills). 각 스킬은 SKILL.md(+ 스크립트)를 가진 하위 폴더다.
-# 프로젝트의 example_skills/ 를 workspace/skills 로 매 실행 시 동기화한다(파일 덮어씀).
+# 프로젝트의 example_skills/ 를 workspace/skills 로 매 실행 시 동기화한다.
 # → 예시 스킬을 업데이트하면 자동 반영된다. 커스텀 스킬은 example_skills 밖의
 #   다른 이름으로 workspace/skills 에 만들면 이 동기화의 영향을 받지 않는다.
+#
+# 주의: shutil.copytree 는 내용이 같아도 매번 파일을 다시 써 mtime 을 바꾼다.
+# langgraph dev 는 workspace/ 를 감시(watchfiles)하므로, 그럴 경우 import→동기화→
+# 파일 변경 감지→리로드→다시 동기화 의 '무한 리로드 루프'에 빠진다. 그래서 내용이
+# 실제로 달라진 파일만 쓰는 idempotent 동기화를 사용한다(동일하면 건드리지 않음).
+def _sync_tree(src: Path, dst: Path) -> None:
+    """src 트리를 dst 로 복사하되, 내용이 바뀐 파일만 실제로 쓴다."""
+    for _p in src.rglob("*"):
+        _rel = _p.relative_to(src)
+        _target = dst / _rel
+        if _p.is_dir():
+            _target.mkdir(parents=True, exist_ok=True)
+            continue
+        _data = _p.read_bytes()
+        # 내용이 같으면 건너뛴다(파일을 건드리지 않아 리로드가 유발되지 않음).
+        if _target.exists() and _target.read_bytes() == _data:
+            continue
+        _target.parent.mkdir(parents=True, exist_ok=True)
+        _target.write_bytes(_data)
+
+
 _skills_dir = WORKSPACE / "skills"
 _skills_dir.mkdir(parents=True, exist_ok=True)
 _example_skills = Path("example_skills")
 if _example_skills.is_dir():
     for _src in _example_skills.iterdir():
         if _src.is_dir():
-            shutil.copytree(_src, _skills_dir / _src.name, dirs_exist_ok=True)
+            _sync_tree(_src, _skills_dir / _src.name)
 
 # 이메일 트리거 규칙 파일(workspace/email_triggers.json). 없으면 빈 배열로 만들어
 # 두어(스킬 set-email-triggers 로 CRUD) 위치를 발견하기 쉽게 한다.
