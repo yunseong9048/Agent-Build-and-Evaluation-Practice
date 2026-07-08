@@ -310,11 +310,19 @@ agent = build_agent()
 # ---------------------------------------------------------------------------
 # 실행 환경 감지 & langgraph dev 커맨드 조립
 # ---------------------------------------------------------------------------
-# 원격(Codespaces/devcontainer/Gitpod)에서는 로컬 브라우저가 없고, GitHub 기본
-# 포트포워딩(*.app.github.dev)이 private 인증 + 레이턴시 때문에 LangGraph Studio
-# (smith.langchain.com)에서 baseUrl로 붙지 않는다. 이런 환경을 감지하면
-# `langgraph dev --tunnel` 로 Cloudflare 터널을 열어 공개 URL을 만들고, Studio가
-# 그 URL로 직접 연결하도록 한다(CORS/공개접근 자동 처리).
+# 원격(Codespaces/devcontainer/Gitpod)에서는 로컬 브라우저가 없어 Studio 연결에
+# 공개 URL 이 필요하다. 두 가지 경로를 지원한다:
+#
+# 1) 터널 모드(기본, LANGGRAPH_TUNNEL 미설정 시 원격이면 자동):
+#    `langgraph dev --tunnel` 로 Cloudflare 터널(*.trycloudflare.com)을 열어 공개
+#    URL 을 만든다. CORS/공개접근이 자동 처리돼 가장 간편하다.
+#    단, 사내망/기업 프록시가 trycloudflare 를 차단하면 접속이 안 된다(SK 사내망 확인됨).
+#
+# 2) GitHub 포트포워딩 모드(LANGGRAPH_TUNNEL=0):
+#    터널 없이 dev 서버만 띄우고, Codespaces 가 제공하는 *.app.github.dev 포워딩
+#    URL 로 Studio 에 붙는다. GitHub 도메인은 사내망 화이트리스트인 경우가 많아
+#    trycloudflare 가 막힌 환경의 대안이다. 단, 해당 포트를 반드시 'Public' 으로
+#    바꿔야 한다(private 이면 Studio 의 fetch 가 GitHub 인증으로 막혀 401).
 def _is_remote_env() -> bool:
     """로컬 브라우저가 없고 터널이 필요한 원격 개발 환경인지 판별한다."""
     return (
@@ -373,6 +381,36 @@ def _build_dev_command(passthrough: list) -> tuple:
     return cmd, use_tunnel
 
 
+def _effective_port(passthrough: list) -> str:
+    """실제로 바인딩될 포트를 추정한다(passthrough --port > LANGGRAPH_PORT > 기본 2024)."""
+    for i, a in enumerate(passthrough):
+        if a == "--port" and i + 1 < len(passthrough):
+            return passthrough[i + 1]
+        if a.startswith("--port="):
+            return a.split("=", 1)[1]
+    return os.getenv("LANGGRAPH_PORT", "2024")
+
+
+def _codespaces_base_url(port: str):
+    """Codespaces 포트포워딩 공개 URL을 환경변수로 조립한다(불가하면 None).
+
+    GitHub Codespaces 는 CODESPACE_NAME 과 GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN
+    (예: app.github.dev)을 주입한다. 포워딩 URL 형식은 https://<name>-<port>.<domain>.
+    주의: 끝에 '/'를 붙이지 않는다 — Studio 가 baseUrl 뒤에 경로를 붙일 때
+    '//assistants/search' 같은 더블슬래시가 되면 404(Not Found) 가 난다.
+    """
+    name = os.getenv("CODESPACE_NAME")
+    domain = os.getenv("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")
+    if not (name and domain):
+        return None
+    return f"https://{name}-{port}.{domain}"
+
+
+def _studio_url(base_url: str) -> str:
+    """주어진 API baseUrl 로 LangGraph Studio 링크를 만든다(트레일링 슬래시 제거)."""
+    return f"https://smith.langchain.com/studio/?baseUrl={base_url.rstrip('/')}"
+
+
 if __name__ == "__main__":
     import subprocess
     import sys
@@ -397,15 +435,25 @@ if __name__ == "__main__":
     # 스크립트에 넘긴 추가 인자(예: --tunnel, --port 8000)는 그대로 전달된다:
     #   uv run python langchain-deepagents.py --tunnel
     cmd, use_tunnel = _build_dev_command(sys.argv[1:])
+    _port = _effective_port(sys.argv[1:])
+    _cs_base = _codespaces_base_url(_port)
 
     print(f"작업 공간: {WORKSPACE}")
     if use_tunnel:
-        print("원격 환경 감지 — Cloudflare 터널(--tunnel)로 공개 URL을 생성합니다.")
-        print(
-            "  콘솔에 출력되는 https://<...>.trycloudflare.com 기반 Studio 링크를 "
-            "외부 브라우저에서 열면 됩니다."
-        )
-        print("  (터널을 끄려면 LANGGRAPH_TUNNEL=0, 강제로 켜려면 LANGGRAPH_TUNNEL=1)")
+        print("터널 모드 — Cloudflare 터널(--tunnel)로 공개 URL을 생성합니다.")
+        print("  콘솔에 출력되는 https://<...>.trycloudflare.com 기반 Studio 링크를 여세요.")
+        print("  ※ 사내망/기업 프록시가 trycloudflare 를 차단하면 접속되지 않습니다.")
+        print("    그 경우 LANGGRAPH_TUNNEL=0 으로 GitHub 포트포워딩 모드를 쓰세요.")
+        if _cs_base:
+            print(f"  (대안) GitHub 포워딩 Studio URL: {_studio_url(_cs_base)}")
+    elif _cs_base:
+        print("GitHub 포트포워딩 모드 (사내망 친화적).")
+        print(f"  API baseUrl : {_cs_base}")
+        print(f"  Studio UI   : {_studio_url(_cs_base)}")
+        print(f"  ⚠️ 포트 {_port} 를 반드시 'Public' 으로 바꾸세요(안 그러면 인증벽에 막혀 401):")
+        print(f"     VS Code 하단 PORTS 패널 → 포트 {_port} 우클릭 → Port Visibility → Public")
+        print(f"     또는: gh codespace ports visibility {_port}:public -c $CODESPACE_NAME")
+        print("  ※ baseUrl 끝에 '/' 를 붙이지 마세요(더블슬래시 → 404 Not Found).")
     else:
         print("Deep Agent UI(LangGraph Studio)를 시작합니다... 잠시 후 브라우저가 열립니다.")
     print(f"$ {' '.join(cmd)}")
