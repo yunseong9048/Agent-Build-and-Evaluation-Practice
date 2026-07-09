@@ -607,7 +607,10 @@ def start_in_background(agent_factory=None) -> list[str]:
     반환: 실제로 실행된(연결 확인된) 채널 이름 리스트.
     """
     active: list[ChannelAdapter] = []
-    for a in (TelegramAdapter(), SlackAdapter(), EmailTriggerAdapter()):
+    adapters: list[ChannelAdapter] = [TelegramAdapter(), SlackAdapter()]
+    if os.getenv("EMAIL_CONNECTOR_ENABLED", "1").lower() not in {"0", "false", "no", "off"}:
+        adapters.append(EmailTriggerAdapter())
+    for a in adapters:
         state, detail = a.check()
         if state == "ok":
             active.append(a)

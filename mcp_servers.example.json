@@ -7,11 +7,17 @@
     "transport": "stdio"
   },
 
-  "notion": {
+  "notion-local": {
     "command": "npx",
     "args": ["-y", "@notionhq/notion-mcp-server"],
     "env": { "NOTION_API_KEY": "여기에-키" },
     "transport": "stdio"
+  },
+
+  "notion-smithery": {
+    "url": "https://mcp.smithery.run/yunseong9048",
+    "headers": { "Authorization": "Bearer ${SMITHERY_API_KEY}" },
+    "transport": "streamable_http"
   },
 
   "github": {

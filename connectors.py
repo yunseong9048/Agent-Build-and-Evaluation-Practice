@@ -556,5 +556,11 @@ def build_messaging_tools() -> list:
     """
     tools: list = []
     for connector_cls in ALL_CONNECTORS:
+        if (
+            connector_cls is EmailConnector
+            and os.getenv("EMAIL_CONNECTOR_ENABLED", "1").lower()
+            in {"0", "false", "no", "off"}
+        ):
+            continue
         tools += connector_cls().tools()
     return tools

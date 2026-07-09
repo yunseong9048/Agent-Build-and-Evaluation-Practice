@@ -1,107 +1,122 @@
 # 나만의 에이전트 기획서
 
 작성일: 2026-07-08
-에이전트 이름: Email Trigger Assistant
+수정일: 2026-07-09
+에이전트 이름: Notion Knowledge Assistant
 
 ## 1. 나의 업무 나열하기
 
-### 업무 A: 중요한 이메일을 놓치지 않도록 알림 보내기
-- 입력: 새 이메일의 발신자, 제목, 본문
-- 출력: Slack 또는 Telegram 알림
+### 업무 A: Notion 페이지에서 필요한 정보 찾기
+- 입력: 사용자의 질문, Notion 페이지명, 키워드
+- 출력: 관련 페이지 목록, 핵심 내용 요약, 원문 링크
 - 반복도: 매일
 - 판단 난이도: 낮음~중간
-- 힘든 점: 모든 메일을 계속 확인하기 어렵고, 긴급/청구/고객 메일을 놓치기 쉽다.
+- 힘든 점: Notion에 자료가 흩어져 있으면 어떤 페이지에 무엇이 있는지 빠르게 찾기 어렵다.
 
-### 업무 B: 청구서/인보이스 이메일 요약하기
-- 입력: billing, invoice, 청구서 관련 이메일
-- 출력: 금액, 마감일, 결제 대상, 확인 필요 사항 요약
+### 업무 B: 조사 결과를 Notion에 정리하기
+- 입력: 리서치 주제, 참고 자료, 사용자의 정리 기준
+- 출력: Notion 하위 페이지 또는 새 문서
 - 반복도: 주 1~3회
 - 판단 난이도: 중간
-- 힘든 점: 본문 형식이 제각각이고, 금액/마감일만 빠르게 확인하고 싶다.
+- 힘든 점: 검색 결과를 읽고, 핵심만 추려 같은 형식으로 문서화하는 일이 번거롭다.
 
-### 업무 C: 중요한 메일을 파일로 보관하기
-- 입력: 특정 발신자 또는 제목 조건에 맞는 이메일
-- 출력: workspace/inbox 폴더의 Markdown 파일
-- 반복도: 필요 시
-- 판단 난이도: 낮음
-- 힘든 점: 나중에 찾기 쉽게 같은 형식으로 저장하는 일이 번거롭다.
+### 업무 C: 강의/실습 내용을 Notion 지식베이스로 축적하기
+- 입력: 강의 메모, 실습 결과, 코드/로그 요약
+- 출력: Notion의 지정 페이지 아래 정리된 학습 기록
+- 반복도: 실습마다
+- 판단 난이도: 중간
+- 힘든 점: 실습하면서 생긴 시행착오와 해결 방법을 나중에 다시 찾기 좋게 남기기 어렵다.
 
 ## 2. 에이전트로 도움받을 부분 찾기
 
-첫 버전에서는 모든 이메일 업무를 자동화하지 않는다. 대신 다음 작은 구간만 맡긴다.
+첫 버전에서는 Notion 전체 업무를 모두 자동화하지 않는다. 대신 다음 작은 구간만 맡긴다.
 
-- 조건에 맞는 새 이메일 감지
-- 발신자/제목/본문 조건으로 규칙 매칭
-- 매칭된 메일을 요약하거나 전달하거나 파일로 저장
-- 규칙 추가/수정/삭제는 스킬의 manage_triggers.py 스크립트로 처리
+- Notion 워크스페이스에서 페이지 검색
+- 찾은 페이지의 내용을 읽고 요약
+- 사용자의 지시에 따라 Notion 페이지 생성
+- 리서치/실습 결과를 일정한 문서 형식으로 정리
+- 작업 결과와 생성된 Notion 링크를 사용자에게 보고
 
 도움받을 관점:
-- 정보 찾기: 이메일 본문에서 금액, 날짜, 요청 사항 추출
-- 초안 작성: 알림 문구와 요약 문장 작성
-- 형식 변환: 긴 이메일을 3줄 요약 또는 Markdown 문서로 변환
-- 반복 실행: 같은 조건의 메일이 올 때마다 동일한 액션 수행
-- 결과 정리: 전송 또는 저장 결과를 사용자에게 짧게 보고
+- 정보 찾기: Notion 검색으로 관련 페이지 후보 찾기
+- 정보 읽기: 페이지 내용을 가져와 핵심만 요약하기
+- 초안 작성: 새 문서의 제목, 목차, 본문 초안 만들기
+- 형식 변환: 대화/로그/리서치 결과를 Notion 문서 구조로 변환
+- 결과 정리: 생성한 페이지 URL과 변경 내용을 짧게 보고
 
 ## 3. 만들 에이전트 고르기
 
-선택: 이메일 트리거 규칙 관리 에이전트
+선택: Notion 지식 정리 및 리서치 에이전트
 
 ### 입력
-- 이메일 발신자
-- 이메일 제목
-- 이메일 본문
-- 사용자가 요청한 자동화 규칙
+- 사용자의 질문 또는 정리 요청
+- Notion 페이지명 또는 키워드
+- 리서치 주제
+- 저장할 상위 페이지명
 
 ### 도구 / MCP
-- 파일 읽기/쓰기: email_triggers.json, workspace/inbox 저장
-- Python 실행: example_skills/set-email-triggers/manage_triggers.py
-- Slack 도구: slack_send_message
-- Telegram 도구: telegram_send_message
-- Email 도구: send_email
-- 외부 MCP: 첫 버전에서는 필수 아님. CRM 연동이 필요해지면 MCP 추가 검토
+- Smithery Notion MCP
+  - `notion_notion-search`: Notion 페이지/데이터 검색
+  - `notion_notion-fetch`: 페이지 내용 읽기
+  - `notion_notion-create-pages`: 새 페이지 생성
+  - `notion_notion-update-page`: 기존 페이지 보완
+- Tavily 웹 검색 도구: 외부 자료 조사
+- 파일 읽기/쓰기: 임시 초안, 실습 메모, 로컬 결과 확인
+- LangSmith: 실행 trace 확인 및 에이전트 동작 디버깅
+
+### 환경변수
+- `SMITHERY_API_KEY`: Smithery MCP 서버 인증
+- `SMITHERY_USER_ID`: Smithery MCP URL의 사용자 경로. 기본값은 `yunseong9048`
+- `LANGSMITH_TRACING`: LangSmith 추적 활성화
+- `LANGSMITH_ENDPOINT`: LangSmith API endpoint
+- `LANGSMITH_API_KEY`: LangSmith 인증
+- `LANGSMITH_PROJECT`: 실행 기록을 모을 프로젝트명
+- `EMAIL_CONNECTOR_ENABLED=0`: 이번 실습에서는 이메일 커넥터를 사용하지 않음
 
 ### 출력
-- Slack/Telegram 알림
-- 요약 문장
-- Markdown 보관 파일
-- 규칙 추가/수정/삭제 결과
+- Notion 검색 결과 요약
+- Notion 페이지 내용 요약
+- 새 Notion 문서 또는 하위 페이지
+- 생성/수정한 Notion 페이지 URL
+- LangSmith에서 확인할 수 있는 실행 기록
 
-### 이번 실습에서 만들 샘플 규칙
-1. 긴급 메일 텔레그램 요약
-2. 인보이스 Slack 요약 알림
-3. 중요 고객 메일 Markdown 보관
+### 이번 실습에서 만들 샘플 작업
+1. Notion의 `Engineering Docs` 페이지 검색 및 내용 요약
+2. `Engineering Docs` 아래에 `Notion MCP 실습-남윤성` 페이지 생성
+3. 웹 리서치 결과를 요약해 Notion에 `MCP 리서치-남윤성` 문서로 저장
 
 ## 4. 반드시 지켜야 하는 규칙
 
-- 원본 이메일에 없는 숫자, 금액, 날짜는 만들지 않는다.
-- 확실하지 않은 값은 "확인 필요"라고 표시한다.
-- 규칙 JSON은 직접 편집하지 않고 manage_triggers.py 스크립트로만 바꾼다.
-- 조건 없는 전체 메일 매칭 규칙은 만들지 않는다.
-- API 키, 비밀번호, 토큰은 규칙이나 결과 파일에 쓰지 않는다.
-- 외부 전송 전에는 대상 채널 또는 수신자를 action에 명확히 적는다.
-- 최종 전송이 민감한 내용이면 사람이 승인한 뒤 진행한다.
-- 파일 저장 시 출처 발신자, 제목, 수신 시각을 함께 남긴다.
+- Notion에 쓰기 작업을 하기 전에는 생성할 제목과 저장 위치를 명확히 확인한다.
+- 기존 페이지를 수정할 때는 덮어쓰기보다 보완/추가를 우선한다.
+- 외부 자료를 요약할 때 출처 URL을 함께 남긴다.
+- 원문에 없는 수치, 날짜, 사람 이름, 결론은 만들지 않는다.
+- 불확실한 내용은 "확인 필요"라고 표시한다.
+- API 키, 비밀번호, 토큰은 Notion 페이지나 로컬 결과 파일에 쓰지 않는다.
+- 테스트 페이지를 만들 때는 제목에 실습자 이름 또는 `테스트`를 넣어 나중에 찾기 쉽게 한다.
+- 작업이 끝나면 생성/수정한 페이지 URL과 수행한 도구를 짧게 보고한다.
 
 ## 5. AI 도구로 구성요소 초안 만들기
 
 ### System Prompt 초안
 
-You are Email Trigger Assistant, an agent that helps the user manage email automation rules and process matched emails.
+You are Notion Knowledge Assistant, an agent that helps the user search, summarize, and organize knowledge in Notion.
 
 Core rules:
-- Use the set-email-triggers skill when the user asks to add, update, list, or remove email trigger rules.
-- Do not edit email_triggers.json directly. Always use manage_triggers.py.
-- Never invent numbers, dates, amounts, sender names, or commitments not present in the email.
-- Mark uncertain extracted values as "확인 필요".
-- Do not store secrets in rules or output files.
-- Prefer small, explicit trigger conditions over broad rules.
-- Report completed changes briefly, including the rule name and match conditions.
+- Use Notion MCP tools when the user asks to search, read, create, or update Notion content.
+- Search before creating pages when the user references an existing Notion page.
+- Do not overwrite existing Notion content unless the user explicitly asks.
+- Never store secrets, API keys, tokens, or passwords in Notion.
+- Do not invent numbers, dates, names, links, or conclusions not supported by the source.
+- Mark uncertain information as "확인 필요".
+- For external research, include source URLs and summarize in the user's requested format.
+- After writing to Notion, report the page title, parent location, and URL.
 
-When processing matched email:
-- Summarize only from the provided sender, subject, and body.
-- Preserve important dates, amounts, people, and requested actions.
-- If sending to Slack, Telegram, or email, keep the message concise and include why it matched.
-- If writing a file, use Markdown and include source metadata.
+When using Notion:
+- Prefer `notion_notion-search` to find target pages.
+- Use `notion_notion-fetch` to inspect the target page before writing under it.
+- Use `notion_notion-create-pages` for new pages.
+- Use `notion_notion-update-page` only when updating an existing page is clearly requested.
 
 ### AGENTS.md 초안
 
@@ -109,31 +124,35 @@ When processing matched email:
 
 ## User
 - 사용자는 LLM Agent 강의 실습을 진행 중이다.
-- 실습 목표는 멋진 아이디어보다 실제 업무를 도울 수 있는 작은 에이전트를 구체화하는 것이다.
+- 사용자는 이메일 자동화보다 Notion 기반 지식 정리 에이전트로 방향을 바꾸었다.
+- [orch강의_8]의 Smithery Notion MCP 흐름을 참고한다.
 
 ## Preferences
 - 계획만 설명하지 말고 직접 실행하고 결과까지 확인해주는 방식을 선호한다.
 - 한국어로 간결하게 진행 상황과 결과를 알려주는 것을 선호한다.
+- Notion에 생성한 페이지 링크를 결과에 포함하는 것을 선호한다.
 
 ## Working Rules
-- 이메일 트리거 규칙은 JSON 직접 편집 대신 manage_triggers.py로 관리한다.
-- 작은 샘플 입력으로 실행하고 결과 파일 또는 설정 파일을 확인한 뒤 개선한다.
+- Notion 쓰기 작업 전에는 대상 페이지와 새 페이지 제목을 명확히 한다.
+- 테스트 페이지는 나중에 찾기 쉽도록 제목에 `남윤성` 또는 `테스트`를 포함한다.
+- LangSmith trace를 활용해 어떤 도구가 호출됐는지 확인한다.
 
 ### Skill 초안
 
-Skill name: set-email-triggers
+Skill name: notion-knowledge-workflow
 
 Use this skill when:
-- 사용자가 "특정 메일이 오면 알려줘", "청구서 메일을 요약해줘", "상사 메일은 저장해줘"처럼 이메일 자동화 규칙 생성을 요청한다.
+- 사용자가 "Notion에서 찾아줘", "Notion에 정리해줘", "Engineering Docs 아래에 페이지 만들어줘", "조사 결과를 Notion에 저장해줘"처럼 Notion 기반 작업을 요청한다.
 
 Procedure:
-1. 조건을 발신자, 제목 포함, 본문 포함으로 나눈다.
-2. action은 Slack/Telegram/Email/파일 저장 중 하나 이상으로 구체화한다.
-3. manage_triggers.py add/update/remove/list를 실행한다.
-4. list로 결과를 재확인한다.
-5. 사용자에게 규칙 이름, 조건, 액션을 요약한다.
+1. 사용자의 요청이 검색/읽기/생성/수정 중 무엇인지 구분한다.
+2. 기존 페이지가 언급되면 `notion_notion-search`로 대상 페이지를 찾는다.
+3. 대상 페이지를 `notion_notion-fetch`로 읽어 저장 위치와 맥락을 확인한다.
+4. 새 페이지가 필요하면 제목, 부모 페이지, 본문 구조를 만든다.
+5. `notion_notion-create-pages` 또는 `notion_notion-update-page`를 실행한다.
+6. 결과 페이지 URL과 요약을 사용자에게 보고한다.
 
 Safety:
-- 조건이 하나도 없는 규칙은 만들지 않는다.
-- 민감정보와 API 키를 action에 넣지 않는다.
-- 불확실한 추출값은 확인 필요로 표시한다.
+- API 키·비밀번호 등 자격증명은 Notion에 넣지 않는다.
+- 기존 페이지 수정은 사용자가 명확히 요청한 경우에만 한다.
+- 출처 없는 리서치 결과는 사실처럼 단정하지 않는다.

@@ -16,6 +16,7 @@ langgraph.json 이 아래 `agent` 그래프를 참조한다.
 
 import json
 import os
+import re
 from pathlib import Path
 
 import dotenv
@@ -60,6 +61,9 @@ model = init_chat_model(
     # thinking budget 으로 매핑). low 는 지연이 짧고, 복잡한 추론·에이전트 지속성이
     # 필요하면 medium/high 로 올린다.
     reasoning_effort="medium",
+    # OpenRouter 크레딧이 부족할 때 provider 기본 출력 한도(예: 65536)가 402를 유발할 수 있다.
+    # Notion 검색/요약/페이지 생성 실습에는 4k 출력이면 충분하므로 명시적으로 제한한다.
+    max_tokens=4096,
     http_client=insecure_http_client,
     http_async_client=insecure_http_async_client,
 )
@@ -197,18 +201,30 @@ def _web_search_tools() -> list:
 
 
 def _mcp_tools() -> list:
-    """MCP 커넥터. 프로젝트 루트의 mcp_servers.json 이 있으면 로드.
+    """MCP 커넥터. mcp_servers.json 과 Smithery Notion 설정을 함께 로드한다.
 
-    형식은 mcp_servers.example.json 참고. 빈 `{}` 면 아무것도 붙지 않는다.
+    - mcp_servers.json 이 있으면 우선 읽는다.
+    - SMITHERY_API_KEY 가 있으면 [orch강의_8] 노트북 패턴처럼 Smithery Notion MCP를
+      자동으로 붙인다. 이미 mcp_servers.json 에 notion 이 있으면 그 설정을 존중한다.
     """
     config_path = Path("mcp_servers.json")
-    if not config_path.exists():
-        return []
-    try:
-        servers = json.loads(config_path.read_text(encoding="utf-8"))
-    except Exception as e:
-        print(f"[connector] mcp_servers.json 파싱 실패(무시): {e}")
-        return []
+    servers = {}
+    if config_path.exists():
+        try:
+            servers = json.loads(config_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"[connector] mcp_servers.json 파싱 실패(무시): {e}")
+            servers = {}
+
+    smithery_api_key = os.getenv("SMITHERY_API_KEY")
+    if smithery_api_key and "notion" not in servers:
+        smithery_user_id = os.getenv("SMITHERY_USER_ID", "yunseong9048")
+        servers["notion"] = {
+            "url": f"https://mcp.smithery.run/{smithery_user_id}",
+            "transport": "streamable_http",
+            "headers": {"Authorization": f"Bearer {smithery_api_key}"},
+        }
+
     if not servers:  # 빈 템플릿({}) 이면 조용히 건너뛴다
         return []
     try:
@@ -219,11 +235,70 @@ def _mcp_tools() -> list:
     try:
         client = MultiServerMCPClient(servers)
         tools = _run_async(client.get_tools())
+        tools = _filter_mcp_tools(tools)
+        tools = _add_sync_wrappers(tools)
+        _sanitize_tool_names(tools)
         print(f"[connector] MCP 서버 {len(servers)}개에서 도구 {len(tools)}개 로드")
         return tools
     except Exception as e:  # 커넥터 하나가 실패해도 에이전트는 떠야 한다
         print(f"[connector] MCP 로드 실패(무시하고 진행): {e}")
         return []
+
+
+def _add_sync_wrappers(tools: list) -> list:
+    """MCP 도구는 coroutine만 있고 func가 없어 동기 invoke()가 NotImplementedError로
+    죽는다(gateway.answer()/answer_stream() 및 agent.stream() 동기 경로 포함).
+    각 도구에 _run_async 로 감싼 동기 func 를 채워 동기/비동기 양쪽에서 안전하게 만든다.
+    """
+    for tool in tools:
+        coro = getattr(tool, "coroutine", None)
+        if coro is not None and getattr(tool, "func", None) is None:
+            def _make_sync(coroutine):
+                def _sync_call(*args, **kwargs):
+                    return _run_async(coroutine(*args, **kwargs))
+                return _sync_call
+            try:
+                tool.func = _make_sync(coro)
+            except Exception:
+                pass  # 일부 도구는 func 설정이 막혀 있을 수 있음 — 무시하고 진행
+    return tools
+
+
+def _filter_mcp_tools(tools: list) -> list:
+    """Smithery 관리용 도구 중 로컬 셸 도구와 충돌하거나 실습에 불필요한 항목을 제외한다."""
+    blocked = {"execute", "search_toolbox", "get_toolbox_status", "remove_server"}
+    filtered = []
+    skipped = []
+    for tool in tools:
+        name = str(getattr(tool, "name", ""))
+        if name in blocked:
+            skipped.append(name)
+            continue
+        filtered.append(tool)
+    if skipped:
+        print(f"[connector] MCP 관리용 도구 제외: {', '.join(skipped)}")
+    return filtered
+
+
+def _sanitize_tool_names(tools: list) -> None:
+    """OpenRouter/Anthropic 이 안정적으로 받는 도구 이름으로 보정한다."""
+    seen = set()
+    for i, tool in enumerate(tools):
+        original = getattr(tool, "name", f"tool_{i}")
+        safe = re.sub(r"[^a-zA-Z0-9]", "_", str(original))[:128].strip("_")
+        if not safe:
+            safe = f"tool_{i}"
+        base = safe[:120]
+        n = 2
+        while safe in seen:
+            suffix = f"_{n}"
+            safe = f"{base[:128 - len(suffix)]}{suffix}"
+            n += 1
+        seen.add(safe)
+        if safe != original:
+            tool.name = safe
+            desc = getattr(tool, "description", "") or ""
+            tool.description = f"{desc}\n\nOriginal MCP tool name: {original}".strip()
 
 
 def build_connector_tools() -> list:
@@ -232,6 +307,7 @@ def build_connector_tools() -> list:
     tools += _web_search_tools()
     tools += _mcp_tools()
     tools += build_messaging_tools()  # Slack / Telegram / Email (connectors.py)
+    _sanitize_tool_names(tools)
     return tools
 
 
@@ -303,7 +379,19 @@ Keep working until the task is fully complete. Don't stop partway and explain wh
 
 ## Progress Updates
 
-For longer tasks, provide brief progress updates at reasonable intervals — a concise sentence recapping what you've done and what's next."""
+For longer tasks, provide brief progress updates at reasonable intervals — a concise sentence recapping what you've done and what's next.
+
+## Notion Search & Q&A
+
+When answering questions about the user's Notion workspace (pages, projects, decisions, notes, etc.):
+
+- ALWAYS use the Notion tools (search/fetch/query) to retrieve real content before answering. Never answer from memory or assumption about what might be in the workspace.
+- If the first search returns nothing relevant, try at least one more search with a different query/keyword before concluding the information doesn't exist.
+- For every factual claim or summarized point, cite the specific Notion page it came from: include the page title and its URL (from the tool's `url` field or the page's Notion link).
+- If a claim is synthesized from multiple pages, cite each contributing page separately.
+- Do not present inferred, guessed, or generic information as if it were retrieved from Notion. If something is not found in the workspace, say so explicitly rather than filling the gap with a plausible-sounding guess.
+- Prefer quoting or closely paraphrasing the exact wording found in the source page for key facts (dates, decisions, owners, statuses) over loose paraphrase, to keep the answer traceable to evidence.
+- If access, permissions, or search limitations prevent a complete answer, state this explicitly instead of speculating about the missing content."""
 
 
 # ---------------------------------------------------------------------------
