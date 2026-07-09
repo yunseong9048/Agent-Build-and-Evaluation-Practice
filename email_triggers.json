@@ -1,0 +1,35 @@
+[
+  {
+    "name": "긴급 메일 텔레그램 요약",
+    "match": {
+      "subject_contains": [
+        "urgent",
+        "긴급",
+        "[중요]"
+      ]
+    },
+    "action": "이 메일이 긴급 조건에 매칭된 이유를 한 줄로 밝히고, 핵심 요청사항과 마감일을 3줄로 요약해서 telegram_send_message 로 나에게 보내줘(chat_id 는 기본값 사용). 확실하지 않은 값은 '확인 필요'라고 표시해줘."
+  },
+  {
+    "name": "인보이스 Slack 요약 알림",
+    "match": {
+      "from": "billing@",
+      "subject_contains": [
+        "invoice",
+        "청구서"
+      ]
+    },
+    "action": "이 인보이스 메일에서 금액, 마감일, 결제 대상, 확인 필요 사항을 추출해서 Slack 채널 C0123ABCD 로 보내줘. 원문에 없는 숫자나 날짜는 만들지 말고, 불확실하면 '확인 필요'라고 표시해줘."
+  },
+  {
+    "name": "중요 고객 메일 Markdown 보관",
+    "match": {
+      "from": "customer@",
+      "subject_contains": [
+        "요청",
+        "문의"
+      ]
+    },
+    "action": "이 고객 메일의 발신자, 제목, 핵심 요청사항, 답변에 필요한 정보를 Markdown으로 정리해서 workspace/inbox 폴더 아래에 '날짜-제목.md' 형식으로 저장해줘. 출처 발신자와 제목을 반드시 포함해줘."
+  }
+]
